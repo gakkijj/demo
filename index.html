@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>霓虹赛车</title>
+  <style>
+    :root {
+      --bg-top: #0f172a;
+      --bg-bottom: #111827;
+      --road-dark: #1f2937;
+      --road-light: #374151;
+      --lane: #f8fafc;
+      --accent: #f97316;
+      --accent-2: #22d3ee;
+      --danger: #fb7185;
+      --text: #f8fafc;
+      --panel: rgba(15, 23, 42, 0.78);
+      --shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top, rgba(34, 211, 238, 0.18), transparent 30%),
+        radial-gradient(circle at bottom, rgba(249, 115, 22, 0.18), transparent 30%),
+        linear-gradient(180deg, var(--bg-top), var(--bg-bottom));
+      color: var(--text);
+      font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+      overflow: hidden;
+    }
+
+    .game-shell {
+      width: min(94vw, 560px);
+      display: grid;
+      gap: 16px;
+    }
+
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 18px;
+      background: var(--panel);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow);
+    }
+
+    .stat strong,
+    .stat span {
+      display: block;
+    }
+
+    .stat strong {
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(248, 250, 252, 0.68);
+    }
+
+    .stat span {
+      margin-top: 4px;
+      font-size: 1.55rem;
+      font-weight: 700;
+    }
+
+    .game-wrap {
+      position: relative;
+      border-radius: 28px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: linear-gradient(180deg, #60a5fa 0%, #93c5fd 22%, #9ca3af 22%, #4b5563 100%);
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      text-align: center;
+      background: linear-gradient(180deg, rgba(2, 6, 23, 0.28), rgba(2, 6, 23, 0.82));
+      transition: opacity 200ms ease;
+    }
+
+    .overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .card {
+      width: min(100%, 360px);
+      padding: 24px;
+      border-radius: 24px;
+      background: rgba(15, 23, 42, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: var(--shadow);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 5vw, 2.8rem);
+      line-height: 1;
+      letter-spacing: 0.04em;
+    }
+
+    p {
+      margin: 8px 0;
+      color: rgba(248, 250, 252, 0.8);
+      line-height: 1.5;
+    }
+
+    button {
+      margin-top: 16px;
+      border: 0;
+      border-radius: 999px;
+      padding: 12px 22px;
+      font: inherit;
+      font-weight: 700;
+      color: #111827;
+      background: linear-gradient(135deg, #facc15, #fb7185);
+      cursor: pointer;
+      transition: transform 160ms ease, filter 160ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px) scale(1.01);
+      filter: brightness(1.04);
+    }
+
+    .tips {
+      padding: 14px 18px;
+      border-radius: 18px;
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.96rem;
+      color: rgba(248, 250, 252, 0.84);
+    }
+  </style>
+</head>
+<body>
+  <main class="game-shell">
+    <section class="hud">
+      <div class="stat">
+        <strong>分数</strong>
+        <span id="score">0</span>
+      </div>
+      <div class="stat">
+        <strong>最高分</strong>
+        <span id="best">0</span>
+      </div>
+      <div class="stat">
+        <strong>速度</strong>
+        <span id="speed">0</span>
+      </div>
+    </section>
+
+    <section class="game-wrap">
+      <canvas id="game" width="560" height="880"></canvas>
+      <div class="overlay" id="overlay">
+        <div class="card">
+          <h1>霓虹赛车</h1>
+          <p>左右移动躲开车辆，速度会越来越快。</p>
+          <p>电脑用方向键或 A/D，手机可点屏幕左右半边转向。</p>
+          <button id="startButton">开始比赛</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="tips">
+      存活越久分数越高。撞车后可立即重新开始。
+    </section>
+  </main>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const speedEl = document.getElementById("speed");
+    const overlay = document.getElementById("overlay");
+    const startButton = document.getElementById("startButton");
+
+    const road = {
+      x: 95,
+      width: 370,
+      laneCount: 3
+    };
+
+    const laneWidth = road.width / road.laneCount;
+    const keys = { left: false, right: false };
+    const touchState = { left: false, right: false };
+
+    let animationId = 0;
+    let lastTime = 0;
+    let spawnTimer = 0;
+    let roadOffset = 0;
+    let score = 0;
+    let best = Number(localStorage.getItem("neon-racer-best") || 0);
+    let gameOver = true;
+
+    const player = {
+      width: 58,
+      height: 114,
+      x: road.x + laneWidth + (laneWidth - 58) / 2,
+      y: canvas.height - 155,
+      speed: 340
+    };
+
+    const state = {
+      speed: 300,
+      traffic: []
+    };
+
+    bestEl.textContent = best;
+
+    function resetGame() {
+      score = 0;
+      spawnTimer = 0;
+      roadOffset = 0;
+      state.speed = 300;
+      state.traffic = [];
+      player.x = road.x + laneWidth + (laneWidth - player.width) / 2;
+      scoreEl.textContent = "0";
+      speedEl.textContent = "0";
+    }
+
+    function startGame() {
+      resetGame();
+      gameOver = false;
+      overlay.classList.add("hidden");
+      startButton.textContent = "重新开始";
+      lastTime = performance.now();
+      cancelAnimationFrame(animationId);
+      animationId = requestAnimationFrame(loop);
+    }
+
+    function endGame() {
+      gameOver = true;
+      best = Math.max(best, Math.floor(score));
+      localStorage.setItem("neon-racer-best", String(best));
+      bestEl.textContent = best;
+      overlay.classList.remove("hidden");
+    }
+
+    function laneCenter(laneIndex, carWidth) {
+      return road.x + laneIndex * laneWidth + (laneWidth - carWidth) / 2;
+    }
+
+    function spawnTraffic() {
+      const lane = Math.floor(Math.random() * road.laneCount);
+      const width = 54 + Math.random() * 12;
+      const height = 106 + Math.random() * 16;
+      state.traffic.push({
+        x: laneCenter(lane, width),
+        y: -height - 20,
+        width,
+        height,
+        color: Math.random() > 0.5 ? "#22d3ee" : "#fb7185"
+      });
+    }
+
+    function intersects(a, b) {
+      return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+      );
+    }
+
+    function update(delta) {
+      const moveLeft = keys.left || touchState.left;
+      const moveRight = keys.right || touchState.right;
+
+      if (moveLeft) {
+        player.x -= player.speed * delta;
+      }
+      if (moveRight) {
+        player.x += player.speed * delta;
+      }
+
+      const minX = road.x + 10;
+      const maxX = road.x + road.width - player.width - 10;
+      player.x = Math.max(minX, Math.min(maxX, player.x));
+
+      state.speed += delta * 5.2;
+      score += delta * 16 + state.speed * delta * 0.05;
+
+      spawnTimer += delta;
+      const spawnEvery = Math.max(0.38, 1.1 - state.speed / 900);
+      if (spawnTimer >= spawnEvery) {
+        spawnTimer = 0;
+        spawnTraffic();
+      }
+
+      roadOffset += state.speed * delta;
+      state.traffic.forEach((car) => {
+        car.y += state.speed * delta;
+      });
+
+      state.traffic = state.traffic.filter((car) => car.y < canvas.height + car.height);
+
+      for (const car of state.traffic) {
+        if (intersects(player, car)) {
+          endGame();
+          return;
+        }
+      }
+
+      scoreEl.textContent = Math.floor(score);
+      speedEl.textContent = Math.floor(state.speed);
+    }
+
+    function drawBackground() {
+      const horizon = 190;
+      ctx.fillStyle = "#93c5fd";
+      ctx.fillRect(0, 0, canvas.width, horizon);
+
+      ctx.fillStyle = "#86efac";
+      ctx.fillRect(0, horizon, road.x, canvas.height - horizon);
+      ctx.fillRect(road.x + road.width, horizon, canvas.width - (road.x + road.width), canvas.height - horizon);
+
+      ctx.fillStyle = "#14532d";
+      for (let i = 0; i < 7; i++) {
+        const y = 220 + i * 105 - (roadOffset * 0.15 % 105);
+        ctx.fillRect(20, y, 16, 55);
+        ctx.fillRect(canvas.width - 36, y + 28, 16, 55);
+      }
+
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(road.x, horizon, road.width, canvas.height - horizon);
+
+      ctx.fillStyle = "#facc15";
+      ctx.fillRect(road.x - 6, horizon, 6, canvas.height - horizon);
+      ctx.fillRect(road.x + road.width, horizon, 6, canvas.height - horizon);
+
+      ctx.fillStyle = "#f8fafc";
+      const dashHeight = 48;
+      const gap = 32;
+      for (let lane = 1; lane < road.laneCount; lane++) {
+        const x = road.x + lane * laneWidth - 5;
+        for (let y = -dashHeight; y < canvas.height; y += dashHeight + gap) {
+          ctx.fillRect(x, horizon + y + (roadOffset % (dashHeight + gap)), 10, dashHeight);
+        }
+      }
+    }
+
+    function drawCar(car, playerCar = false) {
+      ctx.save();
+      ctx.translate(car.x, car.y);
+
+      ctx.fillStyle = playerCar ? "#f97316" : car.color;
+      ctx.fillRect(0, 14, car.width, car.height - 28);
+      ctx.fillRect(car.width * 0.14, 0, car.width * 0.72, car.height);
+
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillRect(car.width * 0.24, 16, car.width * 0.52, 22);
+      ctx.fillRect(car.width * 0.24, car.height - 38, car.width * 0.52, 18);
+
+      ctx.fillStyle = playerCar ? "#22d3ee" : "#111827";
+      ctx.fillRect(6, 20, 8, 24);
+      ctx.fillRect(car.width - 14, 20, 8, 24);
+      ctx.fillRect(6, car.height - 44, 8, 24);
+      ctx.fillRect(car.width - 14, car.height - 44, 8, 24);
+
+      if (playerCar) {
+        ctx.fillStyle = "rgba(34, 211, 238, 0.35)";
+        ctx.fillRect(-6, 24, 6, car.height - 48);
+        ctx.fillRect(car.width, 24, 6, car.height - 48);
+      }
+
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground();
+      state.traffic.forEach((car) => drawCar(car));
+      drawCar(player, true);
+    }
+
+    function loop(timestamp) {
+      const delta = Math.min((timestamp - lastTime) / 1000, 0.032);
+      lastTime = timestamp;
+      update(delta);
+      draw();
+
+      if (!gameOver) {
+        animationId = requestAnimationFrame(loop);
+      }
+    }
+
+    function setTouchDirection(clientX) {
+      const rect = canvas.getBoundingClientRect();
+      const relativeX = clientX - rect.left;
+      touchState.left = relativeX < rect.width / 2;
+      touchState.right = relativeX >= rect.width / 2;
+    }
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") keys.left = true;
+      if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") keys.right = true;
+      if (event.key === " " && gameOver) startGame();
+    });
+
+    document.addEventListener("keyup", (event) => {
+      if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") keys.left = false;
+      if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") keys.right = false;
+    });
+
+    canvas.addEventListener("pointerdown", (event) => {
+      if (gameOver) {
+        startGame();
+        return;
+      }
+      setTouchDirection(event.clientX);
+    });
+
+    canvas.addEventListener("pointermove", (event) => {
+      if (event.buttons === 1 && !gameOver) {
+        setTouchDirection(event.clientX);
+      }
+    });
+
+    window.addEventListener("pointerup", () => {
+      touchState.left = false;
+      touchState.right = false;
+    });
+
+    startButton.addEventListener("click", startGame);
+    draw();
+  </script>
+</body>
+</html>
